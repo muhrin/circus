@@ -6,7 +6,7 @@ if not hasattr(sys, 'version_info') or sys.version_info < (2, 6, 0, 'final'):
     raise SystemExit("Circus requires Python 2.6 or higher.")
 
 
-install_requires = ['psutil', 'pyzmq>=13.1.0,<17.0', 'tornado>=3.0,<5.0', 'six']
+install_requires = ['psutil', 'pyzmq', 'tornado>=3.0,<5.0', 'six']
 
 try:
     import argparse     # NOQA
@@ -41,6 +41,10 @@ setup(name='circus',
       ],
       install_requires=install_requires,
       test_suite='circus.tests',
+      extras_require={
+          # For developers (tests, docs, etc)
+          'dev': ['mock', 'PyYAML', 'nose', 'six', 'papa'],
+      },
       entry_points="""
       [console_scripts]
       circusd = circus.circusd:main

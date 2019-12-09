@@ -10,8 +10,10 @@ import shutil
 import functools
 import multiprocessing
 import socket
+
 try:
     import sysconfig
+
     DEBUG = sysconfig.get_config_var('Py_DEBUG') == 1
 except ImportError:
     # py2.6, we don't really care about that flage here
@@ -59,14 +61,39 @@ SLEEP = PYTHON + " -c 'import time;time.sleep(%d)'"
 
 
 def get_ioloop():
-    from zmq.eventloop.ioloop import ZMQPoller
-    from zmq.eventloop.ioloop import ZMQError, ETERM
+    from zmq import Poller, ZMQError, ETERM, POLLIN, POLLOUT, POLLERR
     from tornado.ioloop import PollIOLoop
 
-    class DebugPoller(ZMQPoller):
+    class DebugPoller(object):
+        """Debug poller with methods copied from the now deprecated ZMQPoller"""
         def __init__(self):
             super(DebugPoller, self).__init__()
             self._fds = []
+            self._poller = Poller()
+
+        @staticmethod
+        def _map_events(events):
+            """translate IOLoop.READ/WRITE/ERROR event masks into zmq.POLLIN/OUT/ERR"""
+            z_events = 0
+            if events & PollIOLoop.READ:
+                z_events |= POLLIN
+            if events & PollIOLoop.WRITE:
+                z_events |= POLLOUT
+            if events & PollIOLoop.ERROR:
+                z_events |= POLLERR
+            return z_events
+
+        @staticmethod
+        def _remap_events(z_events):
+            """translate zmq.POLLIN/OUT/ERR event masks into IOLoop.READ/WRITE/ERROR"""
+            events = 0
+            if z_events & POLLIN:
+                events |= PollIOLoop.READ
+            if z_events & POLLOUT:
+                events |= PollIOLoop.WRITE
+            if z_events & POLLERR:
+                events |= PollIOLoop.ERROR
+            return events
 
         def register(self, fd, events):
             if fd not in self._fds:
@@ -86,15 +113,18 @@ def get_ioloop():
         def poll(self, timeout):
             """
             #737 - For some reason the poller issues events with
-            unexistant FDs, usually with big ints. We have not found yet the
+            inexistent FDs, usually with big ints. We have not found yet the
             reason of this
             behavior that happens only during the tests. But by filtering out
             those events, everything works fine.
 
             """
-            z_events = self._poller.poll(1000*timeout)
+            z_events = self._poller.poll(1000 * timeout)
             return [(fd, self._remap_events(evt)) for fd, evt in z_events
                     if fd in self._fds]
+
+        def close(self):
+            pass
 
     class DebugLoop(PollIOLoop):
         def initialize(self, **kwargs):
@@ -143,7 +173,6 @@ class MockWatcher(Watcher):
 
 
 class TestCircus(AsyncTestCase):
-
     arbiter_factory = get_arbiter
     arbiters = []
 
@@ -317,12 +346,14 @@ class TestCircus(AsyncTestCase):
 
 def profile(func):
     """Can be used to dump profile stats"""
+
     def _profile(*args, **kw):
         profiler = cProfile.Profile()
         try:
             return profiler.runcall(func, *args, **kw)
         finally:
             pstats.Stats(profiler).sort_stats('time').print_stats(30)
+
     return _profile
 
 
@@ -373,7 +404,7 @@ def run_process(test_file):
 
 def has_gevent():
     try:
-        import gevent       # NOQA
+        import gevent  # NOQA
         return True
     except ImportError:
         return False
@@ -381,7 +412,7 @@ def has_gevent():
 
 def has_circusweb():
     try:
-        import circusweb       # NOQA
+        import circusweb  # NOQA
         return True
     except ImportError:
         return False
